@@ -1443,35 +1443,19 @@ OfflineLicenseSystem.prototype.showBriefLicenseInfo = function() {
     infoBadge.id = 'licenseInfoBadge';
     infoBadge.style.cssText = [
         'position: fixed;',
-        'top: 10px;',
-        'right: 10px;',
-        'background: linear-gradient(135deg, #005a31 0%, #00816d 100%);',
+        'bottom: 0px;',
+        'right: 0px;',
+        'background: #005a31;',
         'color: white;',
         'padding: 8px 15px;',
-        'border-radius: 20px;',
         'z-index: 9998;',
         'font-size: 12px;',
-        'box-shadow: 0 3px 10px rgba(0,0,0,0.3);',
         'cursor: pointer;',
         'display: flex;',
         'align-items: center;',
-        'gap: 8px;',
-        'border: 1px solid rgba(255,255,255,0.2);',
-        'transition: all 0.3s;'
     ].join('');
     
-    // Warna berbeda berdasarkan paket
-    if (this.currentLicense.package === 'vip') {
-        infoBadge.style.background = 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)';
-        infoBadge.style.color = '#000';
-    } else if (this.currentLicense.package === 'premium') {
-        infoBadge.style.background = 'linear-gradient(135deg, #6f42c1 0%, #6610f2 100%)';
-    } else if (this.currentLicense.package === 'basic') {
-        infoBadge.style.background = 'linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%)';
-    } else if (this.currentLicense.package === 'trial') {
-        infoBadge.style.background = 'linear-gradient(135deg, #fd7e14 0%, #dc3545 100%)';
-    }
-    
+
     // Tampilkan icon berbeda berdasarkan paket
     var iconClass = 'bi-shield-check';
     if (this.currentLicense.package === 'vip') iconClass = 'bi-gem';
@@ -1792,7 +1776,7 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     
     this.currentLicense = {
         key: 'DEMO-MODE',
-        package: 'trial',
+        package: 'demo', // Paket khusus demo dengan semua fitur
         startDate: startDate.toISOString(),
         expiry: expiryDate.toISOString(),
         deviceId: this.deviceId,
@@ -1801,14 +1785,286 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     };
     
     this.saveLicense();
-    this.applyLicenseFeatures();
+    this.applyDemoFeatures(); // Gunakan fungsi khusus untuk demo
     
     var self = this;
     setTimeout(function() {
         self.showExpiredPopup();
     }, 15 * 60 * 1000);
     
-    this.showToast('Mode demo aktif selama 15 menit', 'info');
+    this.showToast('Mode demo aktif selama 15 menit - Semua fitur terbuka', 'info');
+};
+
+// ==================== TAMBAHKAN FUNGSI BARU: applyDemoFeatures ====================
+OfflineLicenseSystem.prototype.applyDemoFeatures = function() {
+    console.log('Menerapkan semua fitur untuk mode demo');
+    
+    // 1. Tampilkan logo jika sebelumnya tersembunyi
+    this.showElement('#masjidLogo');
+    
+    // 2. Tampilkan semua slide
+    for (var i = 1; i <= 4; i++) {
+        this.showElement('#slide' + i);
+    }
+    
+    // 3. Tampilkan tombol ON/OFF
+    this.showElement('#screenOffBtn');
+    
+    // 4. Tampilkan nama desa lengkap (jika ada)
+    this.restoreAddress();
+    
+    // 5. Batalkan pembatasan gambar (gunakan maksimal 7 gambar seperti VIP)
+    this.limitImages(7);
+    
+    // 6. Tampilkan card Imsak dan Syuruq
+    this.showElement('#timeImsak');
+    this.showElement('#timeSyuruq');
+    this.showElement('#thSyuruq');
+    
+    // 7. Nonaktifkan timer Maghrib & Isya (tampilkan terus)
+    this.showElement('#timeMaghrib');
+    this.showElement('#timeIsya');
+    
+    // 8. Tampilkan semua tombol pengaturan
+    this.showAllSettingsButtons();
+    
+    // 9. Tampilkan semua tombol atur waktu adzan
+    this.showAllAdzanButtons();
+    
+    // 10. Aktifkan semua audio
+    this.enableAllAudio();
+    
+    // 11. Matikan iklan selama demo
+    if (this.adsTimer) {
+        clearInterval(this.adsTimer);
+        this.adsTimer = null;
+    }
+    
+    // Update UI dengan info demo
+    this.updateDemoUI();
+};
+
+// ==================== TAMBAHKAN FUNGSI HELPER BARU ====================
+OfflineLicenseSystem.prototype.showElement = function(selector) {
+    var element = document.querySelector(selector);
+    if (element) {
+        element.style.display = '';
+    }
+};
+
+OfflineLicenseSystem.prototype.restoreAddress = function() {
+    var addressElement = document.getElementById('masjidAddress');
+    if (addressElement) {
+        // Kembalikan alamat asli atau default
+        addressElement.textContent = addressElement.getAttribute('data-original-address') || 'Masjid Al-Muthmainnah';
+    }
+};
+
+OfflineLicenseSystem.prototype.showAllSettingsButtons = function() {
+    var selectors = [
+        'button[data-bs-target="#offcanvasDataMasjid"]',
+        'button[data-bs-target="#offcanvasRunningText"]',
+        'button[onclick="showSliderSettingsForm()"]'
+    ];
+    
+    for (var i = 0; i < selectors.length; i++) {
+        this.showElement(selectors[i]);
+    }
+};
+
+OfflineLicenseSystem.prototype.showAllAdzanButtons = function() {
+    var self = this;
+    setTimeout(function() {
+        var modal = document.getElementById('prayerSettingsModal');
+        if (modal) {
+            var buttonSelectors = [
+                'button[onclick*="adzan"]',
+                'button[onclick*="iqamah"]',
+                'button[onclick*="overlay"]'
+            ];
+            
+            for (var i = 0; i < buttonSelectors.length; i++) {
+                var buttons = modal.querySelectorAll(buttonSelectors[i]);
+                for (var j = 0; j < buttons.length; j++) {
+                    buttons[j].style.display = '';
+                }
+            }
+        }
+    }, 1000);
+};
+
+OfflineLicenseSystem.prototype.enableAllAudio = function() {
+    var audioIds = ['audioShalawat', 'audioAdzan'];
+    
+    for (var i = 0; i < audioIds.length; i++) {
+        var audioElement = document.getElementById(audioIds[i]);
+        if (audioElement) {
+            // Setel kembali sumber audio default jika ada
+            if (audioIds[i] === 'audioShalawat') {
+                audioElement.src = 'audio/shalawat.mp3';
+            } else if (audioIds[i] === 'audioAdzan') {
+                audioElement.src = 'audio/adzan.mp3';
+            }
+        }
+    }
+};
+
+OfflineLicenseSystem.prototype.updateDemoUI = function() {
+    // Update badge demo
+    var oldBadge = document.getElementById('licenseInfoBadge');
+    if (oldBadge && oldBadge.parentNode) {
+        oldBadge.parentNode.removeChild(oldBadge);
+    }
+    
+    // Buat badge demo khusus
+    var demoBadge = document.createElement('div');
+    demoBadge.id = 'licenseInfoBadge';
+    demoBadge.style.cssText = [
+        'position: fixed;',
+        'bottom: 0px;',
+        'right: 0px;',
+        'background: #333;',
+        'color: white;',
+        'padding: 8px 15px;',
+        'border-radius: 20px 0px 0px 20px;',
+        'z-index: 9998;',
+        'font-size: 12px;',
+        'cursor: pointer;',
+        'display: flex;',
+        'align-items: center;',
+        'gap: 8px;',
+    ].join('');
+    
+    demoBadge.innerHTML = [
+        '<i class="bi bi-play-circle" style="font-size: 14px;"></i>',
+        '<span><b>DEMO</b></span>'
+    ].join('');
+    
+    document.body.appendChild(demoBadge);
+    
+    var self = this;
+    demoBadge.addEventListener('click', function() {
+        self.showDemoInfoPopup();
+    });
+};
+
+// ==================== TAMBAHKAN FUNGSI SHOW DEMO INFO ====================
+OfflineLicenseSystem.prototype.showDemoInfoPopup = function() {
+    this.removeExistingPopup();
+    
+    var overlay = this.createOverlay();
+    
+    overlay.innerHTML = [
+        '<div class="offline-license-popup">',
+        '    <div class="popup-header">',
+        '        <h2>MODE DEMO AKTIF</h2>',
+        '        <p class="subtitle">Semua fitur terbuka selama 15 menit</p>',
+        '    </div>',
+        '    ',
+        '    <div class="popup-body">',
+        '        <div class="license-details-card">',
+        '            <div class="status-indicator active">',
+        '                <div class="status-dot"></div>',
+        '                <span>STATUS: MODE DEMO</span>',
+        '            </div>',
+        '            ',
+        '            <div class="demo-features">',
+        '                <h4><i class="bi bi-stars"></i> Fitur yang Aktif:</h4>',
+        '                <ul>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-images"></i> Slide Gambar: 7 gambar maksimal',
+        '                    </li>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-music-note-beamed"></i> Audio: Lengkap (Shalawat & Adzan)',
+        '                    </li>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-megaphone"></i> Iklan: Tidak ada iklan',
+        '                    </li>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-sliders"></i> Pengaturan: Semua tombol tersedia',
+        '                    </li>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-clock"></i> Waktu Adzan: Semua pengaturan terbuka',
+        '                    </li>',
+        '                    <li class="feature-active">',
+        '                        <i class="bi bi-display"></i> Semua Slide: Terbuka lengkap',
+        '                    </li>',
+        '                </ul>',
+        '            </div>',
+        '            ',
+        '            <div class="demo-warning">',
+        '                <h4><i class="bi bi-exclamation-triangle"></i> Perhatian:</h4>',
+        '                <p>Mode demo akan berakhir dalam 15 menit. Setelah itu, Anda perlu mengaktifkan lisensi untuk melanjutkan penggunaan.</p>',
+        '            </div>',
+        '            ',
+        '            <div class="action-buttons">',
+        '                <button id="activateNowBtn" class="btn-activate-large">',
+        '                    <i class="bi bi-key-fill"></i> AKTIVASI LISENSI SEKARANG',
+        '                </button>',
+        '                <button id="closeDemoInfoBtn" class="btn-close">',
+        '                    <i class="bi bi-check-lg"></i> LANJUTKAN DEMO',
+        '                </button>',
+        '            </div>',
+        '        </div>',
+        '    </div>',
+        '    ',
+        '    <div class="popup-footer">',
+        '        <div class="demo-timer">',
+        '            <i class="bi bi-clock"></i>',
+        '            <span>Waktu tersisa: <span id="demoTimeRemaining">15:00</span></span>',
+        '        </div>',
+        '    </div>',
+        '</div>'
+    ].join('');
+    
+    document.body.appendChild(overlay);
+    
+    var self = this;
+    
+    // Hitung waktu tersisa
+    var expiryDate = new Date(this.currentLicense.expiry);
+    var now = new Date();
+    var timeRemaining = Math.floor((expiryDate - now) / 1000); // dalam detik
+    
+    function updateTimer() {
+        var minutes = Math.floor(timeRemaining / 60);
+        var seconds = timeRemaining % 60;
+        var timeString = minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+        
+        var timerElement = document.getElementById('demoTimeRemaining');
+        if (timerElement) {
+            timerElement.textContent = timeString;
+        }
+        
+        if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            self.showExpiredPopup();
+        }
+        
+        timeRemaining--;
+    }
+    
+    var timerInterval = setInterval(updateTimer, 1000);
+    updateTimer(); // Panggil sekali untuk inisialisasi
+    
+    // Event listener
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            // Tidak bisa tutup dengan klik di luar
+            self.showToast('Gunakan tombol "LANJUTKAN DEMO" untuk melanjutkan', 'info');
+        }
+    });
+    
+    document.getElementById('activateNowBtn').addEventListener('click', function() {
+        clearInterval(timerInterval);
+        self.removePopup(overlay);
+        self.showActivationPopup();
+    });
+    
+    document.getElementById('closeDemoInfoBtn').addEventListener('click', function() {
+        clearInterval(timerInterval);
+        self.removePopup(overlay);
+    });
 };
 
 OfflineLicenseSystem.prototype.getDeviceId = function() {
@@ -3442,10 +3698,10 @@ OfflineLicenseSystem.prototype.addStyles = function() {
         
         .vip-badge {
             position: absolute;
-            top: -12px;
-            left: 50%;
+            bottom: 0px;
+            left: 0px;
             transform: translateX(-50%);
-            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            background: linear-gradient(135deg, #333 0%, #333 100%);
             color: #000;
             padding: 6px 20px;
             border-radius: 20px;
@@ -3803,6 +4059,68 @@ OfflineLicenseSystem.prototype.addStyles = function() {
                 display: none !important;
             }
         }
+
+        /* Demo Badge Animation */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* Demo Features List */
+        .demo-features {
+            background: rgba(255, 107, 107, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #ff6b6b;
+        }
+
+        .demo-features h4 {
+            color: #ff6b6b !important;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-warning {
+            background: rgba(255, 193, 7, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .demo-warning h4 {
+            color: #ffc107 !important;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 0;
+        }
+
+        .demo-timer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            color: #ff6b6b;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        #demoTimeRemaining {
+            background: rgba(255, 107, 107, 0.1);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            min-width: 60px;
+            display: inline-block;
+            text-align: center;
+        }
+
+
     `;
     
     style.textContent = css;
