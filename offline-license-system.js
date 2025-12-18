@@ -53,7 +53,7 @@ var OfflineLicenseSystem = function() {
                 hiddenPowerButton: true,
                 hiddenVillageName: true,
                 maxImages: 2,
-                hiddenImsakSyuruq: true,
+                hiddenImsakSyuruq: true,  // INI AKAN HIDE BOTH IMSAK & SYURUQ
                 maghribIsyaActiveMinutes: 15,
                 hiddenSettingsButtons: ['data-masjid', 'running-text', 'slider-duration'],
                 hiddenAdzanButtons: ['countdown-adzan', 'countdown-iqamah', 'overlay-duration'],
@@ -128,6 +128,8 @@ var OfflineLicenseSystem = function() {
     this.deviceId = this.getDeviceId();
     this.adsTimer = null;
     this.isShowingAds = false;
+    this.demoUsedKey = 'demo_used_' + this.deviceId;
+
     
     // Default gambar iklan
     this.adImages = [
@@ -135,6 +137,8 @@ var OfflineLicenseSystem = function() {
         'ads/ad2.jpg',
         'ads/ad3.jpg'
     ];
+
+
 };
 
 // ==================== INISIALISASI ====================
@@ -227,6 +231,29 @@ OfflineLicenseSystem.prototype.validateLicense = function() {
     }
     
     return true;
+};
+
+OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
+    var demoUsed = localStorage.getItem(this.demoUsedKey);
+    
+    if (demoUsed === 'true') {
+        return {
+            eligible: false,
+            message: 'Mode demo sudah pernah digunakan pada perangkat ini'
+        };
+    }
+    
+    if (this.currentLicense && this.currentLicense.status !== 'demo') {
+        return {
+            eligible: false,
+            message: 'Lisensi sudah aktif'
+        };
+    }
+    
+    return {
+        eligible: true,
+        message: 'Dapat menggunakan demo'
+    };
 };
 
 // ==================== FUNGSI BARU: KELUAR DARI LISENSI ====================
@@ -609,6 +636,19 @@ OfflineLicenseSystem.prototype.exportLicensesToCSV = function() {
     this.showToast('Data berhasil diexport ke CSV', 'success');
 };
 
+// TAMBAHKAN FUNGSI INI SEBELUM applyLicenseFeatures:
+OfflineLicenseSystem.prototype.setupLeftCarouselForLicense = function(hiddenSlides) {
+    // Simpan hidden slides ke localStorage
+    localStorage.setItem('license_hidden_slides', JSON.stringify(hiddenSlides || []));
+    
+    // Panggil fungsi loadLeftCarousel jika ada
+    if (typeof window.loadLeftCarousel === 'function') {
+        setTimeout(function() {
+            window.loadLeftCarousel();
+        }, 100);
+    }
+};
+
 // ==================== APPLY LICENSE FEATURES ====================
 OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
     if (!this.currentLicense) {
@@ -631,11 +671,8 @@ OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
     }
     
     // 2. Hidden slide tertentu
-    for (var i = 0; i < features.hiddenSlides.length; i++) {
-        var slideNum = features.hiddenSlides[i];
-        var slideId = 'slide' + slideNum;
-        this.hideElement('#' + slideId);
-    }
+    this.setupLeftCarouselForLicense(features.hiddenSlides);
+
     
     // 3. Hidden tombol ON/OFF
     if (features.hiddenPowerButton) {
@@ -655,6 +692,12 @@ OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
         this.hideElement('#timeImsak');
         this.hideElement('#timeSyuruq');
         this.hideElement('#thSyuruq');
+        
+        // TAMBAHKAN INI UNTUK HIDE HEADER IMSAK JUGA:
+        var thImsak = document.getElementById('thImsak');
+        if (thImsak) {
+            thImsak.style.display = 'none';
+        }
     }
     
     // 7. Teks Maghrib & Isya aktif hanya 15 menit pertama (untuk trial)
@@ -716,6 +759,7 @@ OfflineLicenseSystem.prototype.limitImages = function(maxImages) {
     }
 };
 
+// GANTI FUNGSI handleMaghribIsyaTimer MENJADI INI:
 OfflineLicenseSystem.prototype.handleMaghribIsyaTimer = function(minutes) {
     var firstOpenKey = 'firstOpenTime';
     var firstOpenTime = localStorage.getItem(firstOpenKey);
@@ -730,8 +774,20 @@ OfflineLicenseSystem.prototype.handleMaghribIsyaTimer = function(minutes) {
     var minutesDiff = timeDiff / (1000 * 60);
     
     if (minutesDiff > minutes) {
-        this.hideElement('#timeMaghrib');
-        this.hideElement('#timeIsya');
+        // GANTI TEKS HEADER MENJADI "-----" BUKAN HIDE ELEMENT
+        var headerRow = document.getElementById('jadwalHeader');
+        if (headerRow) {
+            var headers = headerRow.getElementsByTagName('th');
+            for (var i = 0; i < headers.length; i++) {
+                var headerText = headers[i].textContent.trim();
+                if (headerText === 'Maghrib' || headerText === 'Isya') {
+                    headers[i].textContent = '-----';
+                }
+            }
+        }
+        
+        // JANGAN hideElement, tapi biarkan waktu tetap tampil
+        // Hanya header yang diganti
     }
 };
 
@@ -1010,31 +1066,50 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
         '                </div>',
         '            </div>',
         '            ',
-        '            <div class="action-section">',
-        '                <button id="activateOfflineBtn" class="btn-activate-large">',
-        '                    <i class="bi bi-check-circle"></i>',
-        '                    <span>AKTIVASI LISENSI</span>',
-        '                </button>',
-        '                ',
-        '                <div class="divider">',
-        '                    <span>ATAU</span>',
-        '                </div>',
-        '                ',
-        '                <button id="demoModeBtn" class="btn-demo-mode">',
-        '                    <i class="bi bi-play-circle"></i>',
-        '                    <span>COBA DEMO (15 MENIT)</span>',
-        '                </button>',
-        '                ',
-        '                <button id="contactAdminBtn" class="btn-contact">',
-        '                    <i class="bi bi-whatsapp"></i>',
-        '                    <span>HUBUNGI ADMIN</span>',
-        '                </button>',
-        '                ',
-        '                <button id="enterAdminPanelBtn" class="btn-admin-panel">',
-        '                    <i class="bi bi-person-badge"></i>',
-        '                    <span>PANEL ADMIN</span>',
-        '                </button>',
-        '            </div>',
+                '    <div class="action-section">',
+                '        <button id="activateOfflineBtn" class="btn-activate-large">',
+                '            <i class="bi bi-check-circle"></i>',
+                '            <span>AKTIVASI LISENSI</span>',
+                '        </button>',
+                '        ',
+                '        <div class="divider">',
+                '            <span>ATAU</span>',
+                '        </div>',
+                '        ',
+                        // TOMBOL DEMO - HANYA TAMPIL JIKA ELIGIBLE
+                        (function() {
+                            var eligibility = this.checkDemoEligibility();
+                            if (eligibility.eligible) {
+                                return [
+                                    '<button id="demoModeBtn" class="btn-demo-mode">',
+                                    '    <i class="bi bi-play-circle"></i>',
+                                    '    <span>COBA DEMO (15 MENIT)</span>',
+                                    '</button>',
+                                    '',
+                                    '<div class="divider">',
+                                    '    <span>ATAU</span>',
+                                    '</div>'
+                                ].join('');
+                            } else {
+                                return [
+                                    '<div class="demo-not-eligible alert alert-warning">',
+                                    '    <i class="bi bi-exclamation-triangle"></i>',
+                                    '    ' + eligibility.message,
+                                    '</div>'
+                                ].join('');
+                            }
+                        }.bind(this)()),
+                '        ',
+                '        <button id="contactAdminBtn" class="btn-contact">',
+                '            <i class="bi bi-whatsapp"></i>',
+                '            <span>HUBUNGI ADMIN</span>',
+                '        </button>',
+                '        ',
+                '        <button id="enterAdminPanelBtn" class="btn-admin-panel">',
+                '            <i class="bi bi-person-badge"></i>',
+                '            <span>PANEL ADMIN</span>',
+                '        </button>',
+                '    </div>',
         '            ',
         '            <div class="info-section">',
         '                <div class="info-box">',
@@ -1487,12 +1562,6 @@ OfflineLicenseSystem.prototype.showBriefLicenseInfo = function() {
         this.style.boxShadow = '0 3px 10px rgba(0,0,0,0.3)';
     });
     
-    // Auto hide opacity setelah 10 detik
-    setTimeout(function() {
-        if (infoBadge.parentNode) {
-            infoBadge.style.opacity = '0.8';
-        }
-    }, 10000);
 };
 
 // ==================== FUNGSI BARU: SHOW EXPIRED POPUP ====================
@@ -1769,14 +1838,51 @@ OfflineLicenseSystem.prototype.setupPackagePreview = function() {
     });
 };
 
+// TAMBAHKAN DI CONSTRUCTOR (jika belum ada):
+this.demoUsedKey = 'demo_used_' + this.deviceId;
+
+// PASTIKAN FUNGSI INI ADA:
+OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
+    var demoUsed = localStorage.getItem(this.demoUsedKey);
+    
+    if (demoUsed === 'true') {
+        return {
+            eligible: false,
+            message: 'Mode demo sudah pernah digunakan pada perangkat ini'
+        };
+    }
+    
+    if (this.currentLicense && this.currentLicense.status !== 'demo') {
+        return {
+            eligible: false,
+            message: 'Lisensi sudah aktif'
+        };
+    }
+    
+    return {
+        eligible: true,
+        message: 'Dapat menggunakan demo'
+    };
+};
+
+// UPDATE activateDemoMode:
 OfflineLicenseSystem.prototype.activateDemoMode = function() {
+    var eligibility = this.checkDemoEligibility();
+    if (!eligibility.eligible) {
+        this.showToast(eligibility.message, 'error');
+        return false;
+    }
+    
+    // TANDAI SUDAH PAKAI DEMO
+    localStorage.setItem(this.demoUsedKey, 'true');
+    
     var startDate = new Date();
     var expiryDate = new Date();
     expiryDate.setMinutes(startDate.getMinutes() + 15);
     
     this.currentLicense = {
         key: 'DEMO-MODE',
-        package: 'demo', // Paket khusus demo dengan semua fitur
+        package: 'demo',
         startDate: startDate.toISOString(),
         expiry: expiryDate.toISOString(),
         deviceId: this.deviceId,
@@ -1785,7 +1891,7 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     };
     
     this.saveLicense();
-    this.applyDemoFeatures(); // Gunakan fungsi khusus untuk demo
+    this.applyDemoFeatures();
     
     var self = this;
     setTimeout(function() {
@@ -1793,6 +1899,7 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     }, 15 * 60 * 1000);
     
     this.showToast('Mode demo aktif selama 15 menit - Semua fitur terbuka', 'info');
+    return true;
 };
 
 // ==================== TAMBAHKAN FUNGSI BARU: applyDemoFeatures ====================
