@@ -53,7 +53,7 @@ var OfflineLicenseSystem = function() {
                 hiddenPowerButton: true,
                 hiddenVillageName: true,
                 maxImages: 2,
-                hiddenImsakSyuruq: true,
+                hiddenImsakSyuruq: true,  // INI AKAN HIDE BOTH IMSAK & SYURUQ
                 maghribIsyaActiveMinutes: 15,
                 hiddenSettingsButtons: ['data-masjid', 'running-text', 'slider-duration'],
                 hiddenAdzanButtons: ['countdown-adzan', 'countdown-iqamah', 'overlay-duration'],
@@ -128,6 +128,8 @@ var OfflineLicenseSystem = function() {
     this.deviceId = this.getDeviceId();
     this.adsTimer = null;
     this.isShowingAds = false;
+    this.demoUsedKey = 'demo_used_' + this.deviceId;
+
     
     // Default gambar iklan
     this.adImages = [
@@ -135,6 +137,8 @@ var OfflineLicenseSystem = function() {
         'ads/ad2.jpg',
         'ads/ad3.jpg'
     ];
+
+
 };
 
 // ==================== INISIALISASI ====================
@@ -227,6 +231,29 @@ OfflineLicenseSystem.prototype.validateLicense = function() {
     }
     
     return true;
+};
+
+OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
+    var demoUsed = localStorage.getItem(this.demoUsedKey);
+    
+    if (demoUsed === 'true') {
+        return {
+            eligible: false,
+            message: 'Mode demo sudah pernah digunakan pada perangkat ini'
+        };
+    }
+    
+    if (this.currentLicense && this.currentLicense.status !== 'demo') {
+        return {
+            eligible: false,
+            message: 'Lisensi sudah aktif'
+        };
+    }
+    
+    return {
+        eligible: true,
+        message: 'Dapat menggunakan demo'
+    };
 };
 
 // ==================== FUNGSI BARU: KELUAR DARI LISENSI ====================
@@ -609,6 +636,19 @@ OfflineLicenseSystem.prototype.exportLicensesToCSV = function() {
     this.showToast('Data berhasil diexport ke CSV', 'success');
 };
 
+// TAMBAHKAN FUNGSI INI SEBELUM applyLicenseFeatures:
+OfflineLicenseSystem.prototype.setupLeftCarouselForLicense = function(hiddenSlides) {
+    // Simpan hidden slides ke localStorage
+    localStorage.setItem('license_hidden_slides', JSON.stringify(hiddenSlides || []));
+    
+    // Panggil fungsi loadLeftCarousel jika ada
+    if (typeof window.loadLeftCarousel === 'function') {
+        setTimeout(function() {
+            window.loadLeftCarousel();
+        }, 100);
+    }
+};
+
 // ==================== APPLY LICENSE FEATURES ====================
 OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
     if (!this.currentLicense) {
@@ -631,11 +671,8 @@ OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
     }
     
     // 2. Hidden slide tertentu
-    for (var i = 0; i < features.hiddenSlides.length; i++) {
-        var slideNum = features.hiddenSlides[i];
-        var slideId = 'slide' + slideNum;
-        this.hideElement('#' + slideId);
-    }
+    this.setupLeftCarouselForLicense(features.hiddenSlides);
+
     
     // 3. Hidden tombol ON/OFF
     if (features.hiddenPowerButton) {
@@ -655,6 +692,12 @@ OfflineLicenseSystem.prototype.applyLicenseFeatures = function() {
         this.hideElement('#timeImsak');
         this.hideElement('#timeSyuruq');
         this.hideElement('#thSyuruq');
+        
+        // TAMBAHKAN INI UNTUK HIDE HEADER IMSAK JUGA:
+        var thImsak = document.getElementById('thImsak');
+        if (thImsak) {
+            thImsak.style.display = 'none';
+        }
     }
     
     // 7. Teks Maghrib & Isya aktif hanya 15 menit pertama (untuk trial)
@@ -716,6 +759,7 @@ OfflineLicenseSystem.prototype.limitImages = function(maxImages) {
     }
 };
 
+// GANTI FUNGSI handleMaghribIsyaTimer MENJADI INI:
 OfflineLicenseSystem.prototype.handleMaghribIsyaTimer = function(minutes) {
     var firstOpenKey = 'firstOpenTime';
     var firstOpenTime = localStorage.getItem(firstOpenKey);
@@ -730,8 +774,20 @@ OfflineLicenseSystem.prototype.handleMaghribIsyaTimer = function(minutes) {
     var minutesDiff = timeDiff / (1000 * 60);
     
     if (minutesDiff > minutes) {
-        this.hideElement('#timeMaghrib');
-        this.hideElement('#timeIsya');
+        // GANTI TEKS HEADER MENJADI "-----" BUKAN HIDE ELEMENT
+        var headerRow = document.getElementById('jadwalHeader');
+        if (headerRow) {
+            var headers = headerRow.getElementsByTagName('th');
+            for (var i = 0; i < headers.length; i++) {
+                var headerText = headers[i].textContent.trim();
+                if (headerText === 'Maghrib' || headerText === 'Isya') {
+                    headers[i].textContent = '-----';
+                }
+            }
+        }
+        
+        // JANGAN hideElement, tapi biarkan waktu tetap tampil
+        // Hanya header yang diganti
     }
 };
 
@@ -982,59 +1038,84 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
         '                <span>STATUS: BELUM AKTIF</span>',
         '            </div>',
         '            ',
-        '            <div class="license-input-section">',
-        '                <div class="input-group">',
-        '                    <div class="input-label">',
-        '                        <i class="bi bi-key-fill"></i>',
-        '                        KODE LISENSI',
-        '                    </div>',
-        '                    <input ',
-        '                        type="text" ',
-        '                        id="offlineLicenseKey"',
-        '                        placeholder="Contoh: RH-MTV-1Q2W3E"',
-        '                        class="license-input"',
-        '                        autocomplete="off"',
-        '                        maxlength="14"',
-        '                        autofocus',
-        '                    />',
-        '                    <div class="input-hint">',
-        '                        Format: RH-MTV-XXXXXX (6 karakter/huruf)',
-        '                    </div>',
-        '                </div>',
-        '                ',
-        '                <div class="package-preview" id="packagePreview">',
-        '                    <div class="preview-placeholder">',
-        '                        <i class="bi bi-box"></i>',
-        '                        <p>Paket akan terdeteksi otomatis</p>',
-        '                    </div>',
-        '                </div>',
-        '            </div>',
+                    '<div class="license-input-section">',
+                    '    <div class="input-group">',
+                    '        <div class="input-label">',
+                    '            <i class="bi bi-key-fill"></i>',
+                    '            KODE LISENSI',
+                    '            <button id="toggleHeaderBtn" class="btn-toggle-header" type="button" title="Sembunyikan/tampilkan header">',
+                    '                <i class="bi bi-chevron-up"></i>',
+                    '            </button>',
+                    '        </div>',
+                    '        <input ',
+                    '            type="text" ',
+                    '            id="offlineLicenseKey"',
+                    '            placeholder="Contoh: RH-MTV-1Q2W3E"',
+                    '            class="license-input"',
+                    '            autocomplete="off"',
+                    '            maxlength="14"',
+                    '            autofocus',
+                    '        />',
+                    '        <div class="input-hint">',
+                    '            Format: RH-MTV-XXXXXX (6 karakter/huruf)',
+                    '        </div>',
+                    '        <div class="input-focus-hint">',
+                    '            <i class="bi bi-arrow-up"></i> Ketik kode lisensi di atas',
+                    '        </div>',
+                    '    </div>',
+                    '    ',
+                    '    <div class="package-preview" id="packagePreview">',
+                    '        <div class="preview-placeholder">',
+                    '            <i class="bi bi-box"></i>',
+                    '            <p>Paket akan terdeteksi otomatis</p>',
+                    '        </div>',
+                    '    </div>',
+                    '</div>',
         '            ',
-        '            <div class="action-section">',
-        '                <button id="activateOfflineBtn" class="btn-activate-large">',
-        '                    <i class="bi bi-check-circle"></i>',
-        '                    <span>AKTIVASI LISENSI</span>',
-        '                </button>',
-        '                ',
-        '                <div class="divider">',
-        '                    <span>ATAU</span>',
-        '                </div>',
-        '                ',
-        '                <button id="demoModeBtn" class="btn-demo-mode">',
-        '                    <i class="bi bi-play-circle"></i>',
-        '                    <span>COBA DEMO (15 MENIT)</span>',
-        '                </button>',
-        '                ',
-        '                <button id="contactAdminBtn" class="btn-contact">',
-        '                    <i class="bi bi-whatsapp"></i>',
-        '                    <span>HUBUNGI ADMIN</span>',
-        '                </button>',
-        '                ',
-        '                <button id="enterAdminPanelBtn" class="btn-admin-panel">',
-        '                    <i class="bi bi-person-badge"></i>',
-        '                    <span>PANEL ADMIN</span>',
-        '                </button>',
-        '            </div>',
+                '    <div class="action-section">',
+                '        <button id="activateOfflineBtn" class="btn-activate-large">',
+                '            <i class="bi bi-check-circle"></i>',
+                '            <span>AKTIVASI LISENSI</span>',
+                '        </button>',
+                '        ',
+                '        <div class="divider">',
+                '            <span>ATAU</span>',
+                '        </div>',
+                '        ',
+                        // TOMBOL DEMO - HANYA TAMPIL JIKA ELIGIBLE
+                        (function() {
+                            var eligibility = this.checkDemoEligibility();
+                            if (eligibility.eligible) {
+                                return [
+                                    '<button id="demoModeBtn" class="btn-demo-mode">',
+                                    '    <i class="bi bi-play-circle"></i>',
+                                    '    <span>COBA DEMO (15 MENIT)</span>',
+                                    '</button>',
+                                    '',
+                                    '<div class="divider">',
+                                    '    <span>ATAU</span>',
+                                    '</div>'
+                                ].join('');
+                            } else {
+                                return [
+                                    '<div class="demo-not-eligible alert alert-warning">',
+                                    '    <i class="bi bi-exclamation-triangle"></i>',
+                                    '    ' + eligibility.message,
+                                    '</div>'
+                                ].join('');
+                            }
+                        }.bind(this)()),
+                '        ',
+                '        <button id="contactAdminBtn" class="btn-contact">',
+                '            <i class="bi bi-whatsapp"></i>',
+                '            <span>HUBUNGI ADMIN</span>',
+                '        </button>',
+                '        ',
+                '        <button id="enterAdminPanelBtn" class="btn-admin-panel">',
+                '            <i class="bi bi-person-badge"></i>',
+                '            <span>PANEL ADMIN</span>',
+                '        </button>',
+                '    </div>',
         '            ',
         '            <div class="info-section">',
         '                <div class="info-box">',
@@ -1064,9 +1145,6 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
         '            <p><i class="bi bi-whatsapp"></i> <strong>Admin:</strong> 089609745090</p>',
         '            <p><i class="bi bi-envelope"></i> <strong>Email:</strong> mahallahtv@gmail.com</p>',
         '        </div>',
-        '        <p class="click-hint">',
-        '            <i class="bi bi-mouse"></i> Klik di luar area ini untuk menutup (jika demo)',
-        '        </p>',
         '    </div>',
         '</div>'
     ].join('');
@@ -1487,12 +1565,6 @@ OfflineLicenseSystem.prototype.showBriefLicenseInfo = function() {
         this.style.boxShadow = '0 3px 10px rgba(0,0,0,0.3)';
     });
     
-    // Auto hide opacity setelah 10 detik
-    setTimeout(function() {
-        if (infoBadge.parentNode) {
-            infoBadge.style.opacity = '0.8';
-        }
-    }, 10000);
 };
 
 // ==================== FUNGSI BARU: SHOW EXPIRED POPUP ====================
@@ -1638,11 +1710,76 @@ OfflineLicenseSystem.prototype.removeExistingPopup = function() {
     this.restoreBackground();
 };
 
+OfflineLicenseSystem.prototype.toggleHeader = function() {
+    var popupHeader = document.querySelector('.offline-license-popup .popup-header');
+    var toggleBtn = document.getElementById('toggleHeaderBtn');
+    var popup = document.querySelector('.offline-license-popup');
+    
+    if (!popupHeader || !toggleBtn) return;
+    
+    if (popupHeader.classList.contains('header-hidden')) {
+        // Show header
+        popupHeader.classList.remove('header-hidden');
+        popupHeader.style.transform = 'translateY(0)';
+        popupHeader.style.opacity = '1';
+        popupHeader.style.height = '';
+        popupHeader.style.padding = '';
+        
+        toggleBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
+        toggleBtn.title = 'Sembunyikan header';
+        
+        if (popup) {
+            popup.classList.remove('header-compact');
+        }
+    } else {
+        // Hide header
+        popupHeader.classList.add('header-hidden');
+        popupHeader.style.transform = 'translateY(-100%)';
+        popupHeader.style.opacity = '0';
+        popupHeader.style.height = '0';
+        popupHeader.style.padding = '0';
+        
+        toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+        toggleBtn.title = 'Tampilkan header';
+        
+        if (popup) {
+            popup.classList.add('header-compact');
+        }
+    }
+    
+    // Adjust popup height setelah toggle
+    setTimeout(this.adjustPopupHeight.bind(this), 300);
+}
+
 OfflineLicenseSystem.prototype.setupActivationEvents = function(overlay) {
     var self = this;
     var activateBtn = overlay.querySelector('#activateOfflineBtn');
     var licenseInput = overlay.querySelector('#offlineLicenseKey');
     
+    // Event listener untuk tombol toggle header
+    var toggleHeaderBtn = overlay.querySelector('#toggleHeaderBtn');
+    if (toggleHeaderBtn) {
+        toggleHeaderBtn.addEventListener('click', function() {
+            self.toggleHeader();
+        });
+    }
+    
+    // Auto-hide header saat input fokus
+    if (licenseInput) {
+        licenseInput.addEventListener('focus', function() {
+            var popupHeader = overlay.querySelector('.popup-header');
+            if (popupHeader && !popupHeader.classList.contains('header-hidden')) {
+                self.toggleHeader();
+            }
+        });
+    }
+
+    // Enhance input focus behavior
+    setTimeout(function() {
+        self.enhanceInputFocus();
+    }, 500);
+    
+    // Event listener lainnya tetap sama...
     activateBtn.addEventListener('click', function() {
         self.processActivation(overlay, activateBtn, licenseInput);
     });
@@ -1717,6 +1854,43 @@ OfflineLicenseSystem.prototype.setupPackagePreview = function() {
     
     if (!licenseInput || !packagePreview) return;
     
+    licenseInput.addEventListener('focus', function() {
+        // Sembunyikan header saat input fokus
+        var popupHeader = document.querySelector('.offline-license-popup .popup-header');
+        if (popupHeader) {
+            popupHeader.style.transform = 'translateY(-100%)';
+            popupHeader.style.opacity = '0';
+            popupHeader.style.height = '0';
+            popupHeader.style.padding = '0';
+            popupHeader.style.transition = 'all 0.3s ease';
+        }
+        
+        // Kurangi margin atas popup
+        var popup = document.querySelector('.offline-license-popup');
+        if (popup) {
+            popup.style.marginTop = '10px';
+        }
+    });
+    
+    licenseInput.addEventListener('blur', function() {
+        // Tampilkan kembali header saat input kehilangan fokus
+        setTimeout(function() {
+            var popupHeader = document.querySelector('.offline-license-popup .popup-header');
+            if (popupHeader) {
+                popupHeader.style.transform = 'translateY(0)';
+                popupHeader.style.opacity = '1';
+                popupHeader.style.height = '';
+                popupHeader.style.padding = '';
+            }
+            
+            // Kembalikan margin popup
+            var popup = document.querySelector('.offline-license-popup');
+            if (popup) {
+                popup.style.marginTop = '';
+            }
+        }, 500); // Delay sedikit agar tidak langsung muncul
+    });
+    
     licenseInput.addEventListener('input', function(e) {
         var key = e.target.value.toUpperCase().trim();
         
@@ -1751,6 +1925,16 @@ OfflineLicenseSystem.prototype.setupPackagePreview = function() {
                 '    </div>',
                 '</div>'
             ].join('');
+            
+            // Header tetap hidden selama preview muncul
+            var popupHeader = document.querySelector('.offline-license-popup .popup-header');
+            if (popupHeader) {
+                popupHeader.style.transform = 'translateY(-100%)';
+                popupHeader.style.opacity = '0';
+                popupHeader.style.height = '0';
+                popupHeader.style.padding = '0';
+            }
+            
         } else {
             if (self.isValidLicenseFormat(key)) {
                 packagePreview.innerHTML = [
@@ -1769,14 +1953,51 @@ OfflineLicenseSystem.prototype.setupPackagePreview = function() {
     });
 };
 
+// TAMBAHKAN DI CONSTRUCTOR (jika belum ada):
+this.demoUsedKey = 'demo_used_' + this.deviceId;
+
+// PASTIKAN FUNGSI INI ADA:
+OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
+    var demoUsed = localStorage.getItem(this.demoUsedKey);
+    
+    if (demoUsed === 'true') {
+        return {
+            eligible: false,
+            message: 'Mode demo sudah pernah digunakan pada perangkat ini'
+        };
+    }
+    
+    if (this.currentLicense && this.currentLicense.status !== 'demo') {
+        return {
+            eligible: false,
+            message: 'Lisensi sudah aktif'
+        };
+    }
+    
+    return {
+        eligible: true,
+        message: 'Dapat menggunakan demo'
+    };
+};
+
+// UPDATE activateDemoMode:
 OfflineLicenseSystem.prototype.activateDemoMode = function() {
+    var eligibility = this.checkDemoEligibility();
+    if (!eligibility.eligible) {
+        this.showToast(eligibility.message, 'error');
+        return false;
+    }
+    
+    // TANDAI SUDAH PAKAI DEMO
+    localStorage.setItem(this.demoUsedKey, 'true');
+    
     var startDate = new Date();
     var expiryDate = new Date();
     expiryDate.setMinutes(startDate.getMinutes() + 15);
     
     this.currentLicense = {
         key: 'DEMO-MODE',
-        package: 'demo', // Paket khusus demo dengan semua fitur
+        package: 'demo',
         startDate: startDate.toISOString(),
         expiry: expiryDate.toISOString(),
         deviceId: this.deviceId,
@@ -1785,7 +2006,7 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     };
     
     this.saveLicense();
-    this.applyDemoFeatures(); // Gunakan fungsi khusus untuk demo
+    this.applyDemoFeatures();
     
     var self = this;
     setTimeout(function() {
@@ -1793,6 +2014,7 @@ OfflineLicenseSystem.prototype.activateDemoMode = function() {
     }, 15 * 60 * 1000);
     
     this.showToast('Mode demo aktif selama 15 menit - Semua fitur terbuka', 'info');
+    return true;
 };
 
 // ==================== TAMBAHKAN FUNGSI BARU: applyDemoFeatures ====================
@@ -2329,6 +2551,155 @@ OfflineLicenseSystem.prototype.addStyles = function() {
             margin: 0;
             color: rgba(255, 255, 255, 0.9) !important;
             font-size: 16px;
+        }
+
+        // Di dalam css di addStyles(), tambahkan:
+
+        /* ==================== HEADER ANIMATION ==================== */
+        .popup-header {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            transform-origin: top !important;
+            overflow: hidden !important;
+            max-height: 200px !important; /* Memberikan ruang untuk animasi */
+        }
+
+        .header-hidden {
+            transform: translateY(-100%) !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            max-height: 0 !important;
+        }
+
+        /* Adjust popup ketika header hidden */
+        .offline-license-popup.header-hidden .popup-body {
+            margin-top: 0 !important;
+        }
+
+        /* ==================== FOCUS EFFECT FOR LICENSE INPUT ==================== */
+        .license-input:focus {
+            outline: none !important;
+            border-color: #005a31 !important;
+            box-shadow: 
+                0 0 0 4px rgba(0, 90, 49, 0.3),
+                inset 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+            background: #ffffff !important;
+            transform: scale(1.02) !important;
+            transition: all 0.3s ease !important;
+        }
+
+        /* Placeholder untuk fokus */
+        .license-input::placeholder {
+            color: rgba(0, 90, 49, 0.5) !important;
+            transition: color 0.3s ease !important;
+        }
+
+        .license-input:focus::placeholder {
+            color: rgba(0, 90, 49, 0.3) !important;
+        }
+
+        /* Container input lebih menonjol saat fokus */
+        .license-input-section.focused {
+            background: rgba(0, 90, 49, 0.03) !important;
+            border-radius: 15px !important;
+            padding: 20px !important;
+            margin: -10px !important;
+            border: 2px dashed rgba(0, 90, 49, 0.1) !important;
+            transition: all 0.3s ease !important;
+        }
+
+        /* ==================== INPUT FOCUS HINT ==================== */
+        .input-focus-hint {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 90, 49, 0.9);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .license-input:focus ~ .input-focus-hint {
+            opacity: 1;
+        }
+
+        // Di CSS, tambahkan:
+        /* ==================== TOGGLE HEADER BUTTON ==================== */
+        .btn-toggle-header {
+            position: absolute !important;
+            right: 10px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            color: white !important;
+            width: 30px !important;
+            height: 30px !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+            font-size: 12px !important;
+            transition: all 0.3s ease !important;
+            z-index: 10 !important;
+        }
+
+        .btn-toggle-header:hover {
+            background: rgba(255, 255, 255, 0.3) !important;
+            transform: translateY(-50%) scale(1.1) !important;
+        }
+
+        .input-label {
+            position: relative !important; /* Untuk posisi absolute tombol */
+            padding-right: 40px !important; /* Ruang untuk tombol */
+        }
+
+        /* Style untuk input section saat fokus */
+        .license-input:focus ~ .input-group {
+            border-color: #005a31 !important;
+        }
+
+        /* Responsive untuk tombol toggle */
+        @media (max-width: 768px) {
+            .btn-toggle-header {
+                width: 25px !important;
+                height: 25px !important;
+                font-size: 10px !important;
+            }
+            
+            .input-label {
+                padding-right: 35px !important;
+            }
+        }
+
+        /* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+        @media (max-height: 700px) {
+            /* Untuk layar pendek, header bisa lebih kecil */
+            .popup-header {
+                padding: 20px !important;
+            }
+            
+            .popup-header h2 {
+                font-size: 24px !important;
+            }
+            
+            .header-icon {
+                font-size: 40px !important;
+            }
+            
+            /* Kurangi tinggi popup saat input fokus */
+            .offline-license-popup.header-compact .popup-body {
+                padding-top: 15px !important;
+            }
         }
         
         /* ==================== POPUP BODY (SCROLLABLE) ==================== */
