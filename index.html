@@ -18,10 +18,9 @@
   <script src="hijri-calendar.js"></script>
   <script src="hariislam.js"></script>
   <script src="ayathadits.js"></script>
+  <script src="offline-license-system-unified.js"></script>
   <!-- Screen Manager -->
   <script src="screen-manager.js"></script>
-  <script src="license-manager.js"></script>
-  <script src="offline-license-system.js"></script>
   <style>
     /* Hilangkan scrollbar vertikal dan horizontal */
     html, body {
@@ -1372,26 +1371,65 @@ function updateHijri() {
 
 // ==================== JADWAL ADZAN ====================
 function initPrayerTimes() {
-    // Koordinat Bone Bolango
-    var lat = 0.5333;   // 0°33' LU
-    var lng = 123.0667; // 123°20' BB
+    // Koordinat Bone Bolango (sesuai permintaan)
+    var lat = 0.6106944;   // Latitude
+    var lng = 123.0846244; // Longitude
     
-    // Hitung waktu sholat offline
-    var times = calculateOfflinePrayerTimes(lat, lng);
-    adzanSchedule = times;
-
-        // SIMPAN WAKTU ASLI
-    for (var prayer in times) {
-        originalPrayerTimes[prayer] = times[prayer];
+    // Set metode perhitungan (contoh: Kemenag)
+    prayTimes.setMethod('Kemenag');
+    
+    // Hitung waktu sholat untuk hari ini
+    var now = new Date();
+    var times = prayTimes.getTimes(
+        now,
+        [lat, lng],
+        8, // WITA (UTC+8)
+        0  // No DST
+    );
+    
+    // Format waktu sesuai kebutuhan Anda
+    adzanSchedule = {
+        imsak: formatPrayTime(times.imsak),
+        shubuh: formatPrayTime(times.fajr),
+        syuruq: formatPrayTime(times.sunrise),
+        dzuhur: formatPrayTime(times.dhuhr),
+        ashar: formatPrayTime(times.asr),
+        maghrib: formatPrayTime(times.maghrib),
+        isya: formatPrayTime(times.isha)
+    };
+    
+    // Simpan waktu asli
+    for (var prayer in adzanSchedule) {
+        originalPrayerTimes[prayer] = adzanSchedule[prayer];
     }
-        
+    
     // Update tampilan
     updatePrayerTimesUI();
     
     // Cek waktu sholat setiap detik
     setInterval(checkPrayerTimes, 5000);
+    
+    // Debug: tampilkan waktu yang dihitung
+    console.log('Waktu Sholat (PrayTimes):', adzanSchedule);
 }
 
+function formatPrayTime(timeStr) {
+    if (!timeStr || timeStr.includes('-----')) {
+        return '--:--';
+    }
+    
+    // Convert dari format "HH:MM" atau "HH:MM (24h)"
+    var time = timeStr.split(' ')[0]; // Ambil bagian waktu saja
+    var parts = time.split(':');
+    
+    if (parts.length === 2) {
+        return parts[0].padStart(2, '0') + ':' + parts[1].padStart(2, '0');
+    }
+    
+    return '--:--';
+}
+
+/*
 function calculateOfflinePrayerTimes(lat, lng) {
     // Algoritma sederhana untuk STB
     var now = new Date();
@@ -1428,6 +1466,7 @@ function calculateOfflinePrayerTimes(lat, lng) {
     
     return times;
 }
+    */
 
 function formatTime(decimalHours) {
     var hour = Math.floor(decimalHours);
@@ -3802,6 +3841,7 @@ function stopAllAudio() {
         console.log('Error stopAllAudio:', e);
     }
 }
+
 
 </script>
 </body>
