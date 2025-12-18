@@ -18,7 +18,7 @@
   <script src="hijri-calendar.js"></script>
   <script src="hariislam.js"></script>
   <script src="ayathadits.js"></script>
-  <script src="offline-license-system.js"></script>
+  <script src="offline-license-system-unified.js"></script>
   <!-- Screen Manager -->
   <script src="screen-manager.js"></script>
   <style>
@@ -202,7 +202,7 @@
       bottom: -5px;
       left: 0;
       width: 100%;
-      background: linear-gradient(90deg, #005a31 0%, #00816d 100%);
+      background: linear-gradient(90deg, #005a31 0%, #005a31 100%);
       color: white;
       font-weight: bold;
       padding: 1px 0;
@@ -642,6 +642,20 @@
       z-index: 20000;
     }
 
+    /* Di style tag di index.html */
+    .hidden-header {
+        color: #999 !important;
+        opacity: 0.6 !important;
+        font-style: italic !important;
+    }
+
+    /* Untuk STB compatibility */
+    .hidden-header {
+        background: rgba(0, 0, 0, 0.05) !important;
+        border-radius: 3px;
+        padding: 2px 5px;
+    }
+
 
   </style>
 </head>
@@ -735,13 +749,13 @@
     <table class="table table-bordered text-center m-0">
       <thead>
         <tr id="jadwalHeader">
-          <th>Imsak</th>
-          <th>Shubuh</th>
-          <th id="thSyuruq">Syuruq</th>
-          <th id="thDzuhur">Dzuhur</th>
-          <th>Ashar</th>
-          <th>Maghrib</th>
-          <th>Isya</th>
+            <th id="thImsak">Imsak</th> <!-- TAMBAH INI -->
+            <th id="thShubuh">Shubuh</th>
+            <th id="thSyuruq">Syuruq</th>
+            <th id="thDzuhur">Dzuhur</th>
+            <th id="thAshar">Ashar</th>
+            <th id="thMaghrib">Maghrib</th> <!-- TAMBAH INI -->
+            <th id="thIsya">Isya</th> <!-- TAMBAH INI -->
         </tr>
       </thead>
       <tbody>
@@ -2384,44 +2398,122 @@ function loadLeftCarousel() {
         var inner = document.getElementById('leftCarouselInner');
         if (!inner) return;
         
-        // Buat semua slide
-        var slide1 = createLeftSlide1();
-        var slide2 = createLeftSlide2();
-        var slide3 = createLeftSlide3();
-        var slide4 = createLeftSlide4();
+        // AMBIL HIDDEN SLIDES DARI LISENSI
+        var licenseHiddenSlides = [];
+        try {
+            var hiddenSlidesStr = localStorage.getItem('license_hidden_slides');
+            if (hiddenSlidesStr) {
+                licenseHiddenSlides = JSON.parse(hiddenSlidesStr);
+            }
+        } catch (e) {
+            console.log('Error reading license hidden slides:', e);
+        }
         
-        // Filter hanya slide yang memiliki konten
-        var slides = [];
-        if (slide1) slides.push({content: slide1, id: 'slide1'});
-        if (slide2) slides.push({content: slide2, id: 'slide2'});
-        if (slide3) slides.push({content: slide3, id: 'slide3'});
-        if (slide4) slides.push({content: slide4, id: 'slide4'});
+        console.log('Slides hidden by license:', licenseHiddenSlides);
         
-        // Jika tidak ada slide sama sekali, buat slide default
-        if (slides.length === 0) {
-            slides.push({
+        // Buat semua slide yang mungkin
+        var allSlides = [
+            { num: 1, content: createLeftSlide1() },
+            { num: 2, content: createLeftSlide2() },
+            { num: 3, content: createLeftSlide3() },
+            { num: 4, content: createLeftSlide4() }
+        ];
+        
+        // Filter slide yang TIDAK dihidden dan ADA kontennya
+        var activeSlides = [];
+        for (var i = 0; i < allSlides.length; i++) {
+            var slide = allSlides[i];
+            
+            // Skip jika slide dihidden oleh lisensi
+            if (licenseHiddenSlides.includes(slide.num)) {
+                console.log('Slide ' + slide.num + ' hidden by license');
+                continue;
+            }
+            
+            // Skip jika konten kosong/null
+            if (!slide.content || slide.content.trim() === '') {
+                console.log('Slide ' + slide.num + ' has no content');
+                continue;
+            }
+            
+            activeSlides.push({
+                num: slide.num,
+                content: slide.content,
+                id: 'slide' + slide.num
+            });
+        }
+        
+        // Jika tidak ada slide aktif, buat default
+        if (activeSlides.length === 0) {
+            activeSlides.push({
+                num: 0,
                 content: '<h5><i class="bi bi-info-circle text-primary"></i> Informasi</h5>' +
                         '<div class="alert alert-warning mt-3">Belum ada konten untuk ditampilkan</div>',
                 id: 'default'
             });
         }
         
+        // Kosongkan carousel inner
         inner.innerHTML = '';
         
-        for (var i = 0; i < slides.length; i++) {
+        // Tambahkan hanya slide aktif
+        for (var j = 0; j < activeSlides.length; j++) {
+            var slide = activeSlides[j];
             var item = document.createElement('div');
-            item.className = 'carousel-item' + (i === 0 ? ' active' : '');
-            item.id = slides[i].id;
+            item.className = 'carousel-item' + (j === 0 ? ' active' : '');
+            item.id = slide.id;
             item.innerHTML = '<div class="left-card"><div class="card-body">' + 
-                           slides[i].content + '</div></div>';
+                           slide.content + '</div></div>';
             inner.appendChild(item);
         }
         
-        // Update carousel indicators
-        updateCarouselIndicators(slides.length);
+        // Setup carousel berdasarkan jumlah slide
+        setupCarouselForSlideCount(activeSlides.length);
         
     } catch (e) {
         console.log('Error loadLeftCarousel:', e);
+    }
+}
+
+// FUNGSI BARU UNTUK SETUP CAROUSEL
+function setupCarouselForSlideCount(slideCount) {
+    var leftCarousel = document.getElementById('leftCarousel');
+    if (!leftCarousel) return;
+    
+    // Update indicators
+    updateCarouselIndicators(slideCount);
+    
+    // Jika hanya 1 slide, nonaktifkan carousel
+    if (slideCount <= 1) {
+        // Nonaktifkan autoplay
+        leftCarousel.setAttribute('data-bs-interval', '0');
+        
+        // Sembunyikan indicators
+        var indicators = leftCarousel.querySelector('.carousel-indicators');
+        if (indicators) indicators.style.display = 'none';
+        
+        // Sembunyikan tombol prev/next
+        var prevBtn = leftCarousel.querySelector('.carousel-control-prev');
+        var nextBtn = leftCarousel.querySelector('.carousel-control-next');
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        
+        // Nonaktifkan swipe/touch
+        leftCarousel.setAttribute('data-bs-touch', 'false');
+    } else {
+        // Aktifkan carousel
+        var interval = 10000; // 10 detik
+        leftCarousel.setAttribute('data-bs-interval', interval);
+        
+        // Tampilkan indicators
+        var indicators = leftCarousel.querySelector('.carousel-indicators');
+        if (indicators) indicators.style.display = 'flex';
+        
+        // Tampilkan tombol prev/next
+        var prevBtn = leftCarousel.querySelector('.carousel-control-prev');
+        var nextBtn = leftCarousel.querySelector('.carousel-control-next');
+        if (prevBtn) prevBtn.style.display = 'block';
+        if (nextBtn) nextBtn.style.display = 'block';
     }
 }
 
@@ -3846,4 +3938,3 @@ function stopAllAudio() {
 </script>
 </body>
 </html>
-
