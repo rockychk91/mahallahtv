@@ -41,6 +41,9 @@ var OfflineLicenseSystem = function() {
             created: '2025-12-18'
         }
     };
+
+    // Load validLicenseKeys dari localStorage (jika ada)
+    this.loadValidLicenseKeys();
     
     // Data paket dengan fitur
     this.licensePackages = {
@@ -148,13 +151,16 @@ OfflineLicenseSystem.prototype.initialize = function() {
     // 1. Tambahkan styles
     this.addStyles();
     
-    // 2. Load license
+    // 2. Load license yang sudah ada
     this.loadLicense();
     
-    // 3. Validasi license
+    // 3. Load validLicenseKeys dari localStorage
+    this.loadValidLicenseKeys();
+    
+    // 4. Validasi license
     var isValid = this.validateLicense();
     
-    // 4. Tampilkan popup sesuai status
+    // 5. Tampilkan popup sesuai status
     if (!isValid) {
         this.showActivationPopup();
     } else {
@@ -165,11 +171,12 @@ OfflineLicenseSystem.prototype.initialize = function() {
         this.showBriefLicenseInfo();
     }
     
-    // 5. Setup iklan jika diperlukan
+    // 6. Setup iklan jika diperlukan
     this.setupAds();
     
     return isValid;
 };
+
 
 // ==================== LICENSE MANAGEMENT ====================
 OfflineLicenseSystem.prototype.loadLicense = function() {
@@ -255,6 +262,7 @@ OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
         message: 'Dapat menggunakan demo'
     };
 };
+
 
 // ==================== FUNGSI BARU: KELUAR DARI LISENSI ====================
 OfflineLicenseSystem.prototype.deactivateLicense = function() {
@@ -402,9 +410,6 @@ OfflineLicenseSystem.prototype.showAdminPanel = function(password) {
     overlay.innerHTML = [
         '<div class="offline-license-popup admin">',
         '    <div class="popup-header">',
-        '        <div class="header-icon">',
-        '            <i class="bi bi-person-badge"></i>',
-        '        </div>',
         '        <h2>PANEL ADMIN LISENSI</h2>',
         '        <p class="subtitle">Generate dan Kelola Kode Lisensi</p>',
         '    </div>',
@@ -501,18 +506,14 @@ OfflineLicenseSystem.prototype.showAdminPanel = function(password) {
         '                </div>',
         '            </div>',
         '        </div>',
-        '    </div>',
-        '    ',
-        '    <div class="popup-footer">',
-        '        <div class="admin-footer">',
         '            <button id="closeAdminPanelBtn" class="btn-admin-close">',
         '                <i class="bi bi-x-lg"></i> TUTUP PANEL',
         '            </button>',
         '            <div class="admin-info">',
         '                <p><i class="bi bi-info-circle"></i> Panel Admin - Hanya untuk penggunaan internal</p>',
         '            </div>',
-        '        </div>',
         '    </div>',
+        '    ',
         '</div>'
     ].join('');
     
@@ -551,17 +552,32 @@ OfflineLicenseSystem.prototype.showAdminPanel = function(password) {
             '        <button onclick="window.open(\'https://wa.me/?text=Kode%20Lisensi:%20' + encodeURIComponent(licenseCode) + '%0APaket:%20' + encodeURIComponent(self.licensePackages[packageType].name) + '%0ACara%20Aktivasi:%20Buka%20aplikasi%20dan%20masukkan%20kode%20ini\', \'_blank\')" class="btn-whatsapp-admin">',
             '            <i class="bi bi-whatsapp"></i> Kirim via WhatsApp',
             '        </button>',
+            '        <button id="testActivationBtn" class="btn-admin-secondary">',
+            '            <i class="bi bi-check-lg"></i> Test Aktivasi',
+            '        </button>',
             '    </div>',
             '</div>'
         ].join('');
         
         // Ganti form dengan hasil
         document.querySelector('.admin-form').innerHTML = resultHTML;
+
+        // Tambahkan event listener untuk tombol test
+        document.getElementById('testActivationBtn').addEventListener('click', function() {
+            // Simulasikan aktivasi
+            var testResult = self.activateLicense(licenseCode);
+            if (testResult.success) {
+                self.showToast('Test BERHASIL! Kode ' + licenseCode + ' valid untuk paket ' + self.licensePackages[packageType].name, 'success');
+            } else {
+                self.showToast('Test GAGAL: ' + testResult.message, 'error');
+            }
+        });
+        
         
         // Refresh license list setelah 2 detik
         setTimeout(function() {
             self.showAdminPanel('admin123'); // Refresh panel
-        }, 2000);
+        }, 5000);
     });
     
     // Event listener untuk export
@@ -582,21 +598,24 @@ OfflineLicenseSystem.prototype.showAdminPanel = function(password) {
     
     // Event listener untuk close
     document.getElementById('closeAdminPanelBtn').addEventListener('click', function() {
-        self.removePopup(overlay);
+        self.switchPopup(self.showActivationPopup);
     });
-    
-    // Klik di luar untuk close
-    overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) {
-            self.removePopup(overlay);
-        }
-    });
+
     
     // Adjust height setelah render
     setTimeout(function() {
         self.adjustPopupHeight();
     }, 100);
 };
+
+OfflineLicenseSystem.prototype.switchPopup = function(nextPopupFn) {
+    this.removeExistingPopup();
+    var self = this;
+    setTimeout(function() {
+        nextPopupFn.call(self);
+    }, 50);
+};
+
 
 // ==================== FUNGSI BARU: EXPORT KE CSV ====================
 OfflineLicenseSystem.prototype.exportLicensesToCSV = function() {
@@ -949,29 +968,73 @@ OfflineLicenseSystem.prototype.removeAd = function(adOverlay) {
     this.isShowingAds = false;
 };
 
+OfflineLicenseSystem.prototype.findGeneratedLicense = function(code) {
+    var list = JSON.parse(localStorage.getItem('generated_licenses') || '[]');
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].code === code) {
+            return list[i];
+        }
+    }
+    return null;
+};
+
+
 // ==================== ACTIVATION FUNCTIONS ====================
 OfflineLicenseSystem.prototype.activateLicense = function(licenseKey) {
     licenseKey = licenseKey.toUpperCase().trim();
-    
+
     if (!this.isValidLicenseFormat(licenseKey)) {
         return {
             success: false,
-            message: 'Format kode lisensi tidak valid. Format: RH-MTV-XXXXXX'
+            message: 'Format kode lisensi tidak valid'
         };
     }
-    
+
+    // CEK KE validLicenseKeys (termasuk yang baru digenerate admin)
     var licenseInfo = this.validLicenseKeys[licenseKey];
-    if (!licenseInfo) {
-        return {
-            success: false,
-            message: 'Kode lisensi tidak ditemukan atau sudah digunakan'
-        };
-    }
     
+    if (!licenseInfo) {
+        // Cek juga ke generated_licenses untuk backup
+        var generated = this.findGeneratedLicense(licenseKey);
+        if (!generated) {
+            return {
+                success: false,
+                message: 'Kode lisensi tidak ditemukan'
+            };
+        }
+        
+        // Jika ditemukan di generated_licenses tapi belum di validLicenseKeys,
+        // tambahkan ke validLicenseKeys
+        if (generated.status === 'pending') {
+            licenseInfo = {
+                package: generated.package,
+                expiryDays: generated.expiryDays || 365,
+                created: generated.created || new Date().toISOString().split('T')[0]
+            };
+            this.validLicenseKeys[licenseKey] = licenseInfo;
+            this.saveValidLicenseKeys();
+        } else if (generated.status === 'active') {
+            return {
+                success: false,
+                message: 'Kode lisensi sudah digunakan'
+            };
+        }
+    }
+
+    // Hitung expiry
+    var pkg = this.licensePackages[licenseInfo.package];
     var startDate = new Date();
     var expiryDate = new Date();
-    expiryDate.setDate(startDate.getDate() + licenseInfo.expiryDays);
-    
+
+    if (licenseInfo.package === 'vip') {
+        expiryDate.setFullYear(expiryDate.getFullYear() + 100);
+    } else if (licenseInfo.package === 'trial') {
+        expiryDate.setDate(expiryDate.getDate() + 2);
+    } else {
+        expiryDate.setDate(expiryDate.getDate() + 365);
+    }
+
+    // Simpan lisensi aktif
     this.currentLicense = {
         key: licenseKey,
         package: licenseInfo.package,
@@ -981,34 +1044,35 @@ OfflineLicenseSystem.prototype.activateLicense = function(licenseKey) {
         activatedAt: new Date().toISOString(),
         status: 'active'
     };
-    
-    if (this.saveLicense()) {
-        // Update status kode di generated licenses (jika ada)
-        var generatedLicenses = JSON.parse(localStorage.getItem('generated_licenses') || '[]');
-        for (var i = 0; i < generatedLicenses.length; i++) {
-            if (generatedLicenses[i].code === licenseKey) {
-                generatedLicenses[i].status = 'active';
-                generatedLicenses[i].activatedAt = new Date().toISOString();
-                localStorage.setItem('generated_licenses', JSON.stringify(generatedLicenses));
+
+    this.saveLicense();
+
+    // Update status di generated_licenses jika ada
+    var generated = this.findGeneratedLicense(licenseKey);
+    if (generated) {
+        generated.status = 'active';
+        generated.activatedAt = new Date().toISOString();
+        generated.activatedDevice = this.deviceId;
+        
+        var all = JSON.parse(localStorage.getItem('generated_licenses') || '[]');
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].code === licenseKey) {
+                all[i] = generated;
                 break;
             }
         }
-        
-        return {
-            success: true,
-            data: {
-                package: licenseInfo.package,
-                expiry: expiryDate.toISOString(),
-                days: licenseInfo.expiryDays
-            }
-        };
+        localStorage.setItem('generated_licenses', JSON.stringify(all));
     }
-    
+
     return {
-        success: false,
-        message: 'Gagal menyimpan lisensi'
+        success: true,
+        data: {
+            package: licenseInfo.package,
+            expiry: expiryDate.toISOString()
+        }
     };
 };
+
 
 OfflineLicenseSystem.prototype.isValidLicenseFormat = function(key) {
     var pattern = /^RH-MTV-[A-Z0-9]{6}$/;
@@ -1020,6 +1084,30 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
     this.removeExistingPopup();
     
     var overlay = this.createOverlay();
+    
+    // Cek eligibility untuk demo terlebih dahulu
+    var eligibility = this.checkDemoEligibility();
+    var demoButtonHTML = '';
+    
+    if (eligibility.eligible) {
+        demoButtonHTML = [
+            '<button id="demoModeBtn" class="btn-demo-mode">',
+            '    <i class="bi bi-play-circle"></i>',
+            '    <span>COBA DEMO (15 MENIT)</span>',
+            '</button>',
+            '',
+            '<div class="divider">',
+            '    <span>ATAU</span>',
+            '</div>'
+        ].join('');
+    } else {
+        demoButtonHTML = [
+            '<div class="demo-not-eligible alert alert-warning">',
+            '    <i class="bi bi-exclamation-triangle"></i>',
+            '    ' + eligibility.message,
+            '</div>'
+        ].join('');
+    }
     
     overlay.innerHTML = [
         '<div class="offline-license-popup">',
@@ -1066,50 +1154,28 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
         '                </div>',
         '            </div>',
         '            ',
-                '    <div class="action-section">',
-                '        <button id="activateOfflineBtn" class="btn-activate-large">',
-                '            <i class="bi bi-check-circle"></i>',
-                '            <span>AKTIVASI LISENSI</span>',
-                '        </button>',
-                '        ',
-                '        <div class="divider">',
-                '            <span>ATAU</span>',
-                '        </div>',
-                '        ',
-                        // TOMBOL DEMO - HANYA TAMPIL JIKA ELIGIBLE
-                        (function() {
-                            var eligibility = this.checkDemoEligibility();
-                            if (eligibility.eligible) {
-                                return [
-                                    '<button id="demoModeBtn" class="btn-demo-mode">',
-                                    '    <i class="bi bi-play-circle"></i>',
-                                    '    <span>COBA DEMO (15 MENIT)</span>',
-                                    '</button>',
-                                    '',
-                                    '<div class="divider">',
-                                    '    <span>ATAU</span>',
-                                    '</div>'
-                                ].join('');
-                            } else {
-                                return [
-                                    '<div class="demo-not-eligible alert alert-warning">',
-                                    '    <i class="bi bi-exclamation-triangle"></i>',
-                                    '    ' + eligibility.message,
-                                    '</div>'
-                                ].join('');
-                            }
-                        }.bind(this)()),
-                '        ',
-                '        <button id="contactAdminBtn" class="btn-contact">',
-                '            <i class="bi bi-whatsapp"></i>',
-                '            <span>HUBUNGI ADMIN</span>',
-                '        </button>',
-                '        ',
-                '        <button id="enterAdminPanelBtn" class="btn-admin-panel">',
-                '            <i class="bi bi-person-badge"></i>',
-                '            <span>PANEL ADMIN</span>',
-                '        </button>',
-                '    </div>',
+        '            <div class="action-section">',
+        '                <button id="activateOfflineBtn" class="btn-activate-large">',
+        '                    <i class="bi bi-check-circle"></i>',
+        '                    <span>AKTIVASI LISENSI</span>',
+        '                </button>',
+        '                ',
+        '                <div class="divider">',
+        '                    <span>ATAU</span>',
+        '                </div>',
+        '                ',
+        demoButtonHTML,
+        '                ',
+        '                <button id="contactAdminBtn" class="btn-contact">',
+        '                    <i class="bi bi-whatsapp"></i>',
+        '                    <span>HUBUNGI ADMIN</span>',
+        '                </button>',
+        '                ',
+        '                <button id="enterAdminPanelBtn" class="btn-admin-panel">',
+        '                    <i class="bi bi-person-badge"></i>',
+        '                    <span>PANEL ADMIN</span>',
+        '                </button>',
+        '            </div>',
         '            ',
         '            <div class="info-section">',
         '                <div class="info-box">',
@@ -1130,18 +1196,13 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
         '                        <i class="bi bi-copy"></i> Salin ID',
         '                    </button>',
         '                </div>',
+        '                ',
+        '                <div class="contact-details">',
+        '                    <p><i class="bi bi-whatsapp"></i> <strong>Admin:</strong> 089609745090</p>',
+        '                    <p><i class="bi bi-envelope"></i> <strong>Email:</strong> mahallahtv@gmail.com</p>',
+        '                </div>',
         '            </div>',
         '        </div>',
-        '    </div>',
-        '    ',
-        '    <div class="popup-footer">',
-        '        <div class="contact-details">',
-        '            <p><i class="bi bi-whatsapp"></i> <strong>Admin:</strong> 089609745090</p>',
-        '            <p><i class="bi bi-envelope"></i> <strong>Email:</strong> mahallahtv@gmail.com</p>',
-        '        </div>',
-        '        <p class="click-hint">',
-        '            <i class="bi bi-mouse"></i> Klik di luar area ini untuk menutup (jika demo)',
-        '        </p>',
         '    </div>',
         '</div>'
     ].join('');
@@ -1153,6 +1214,7 @@ OfflineLicenseSystem.prototype.showActivationPopup = function() {
     this.darkenBackground();
     
     // Adjust height setelah render
+    var self = this;
     setTimeout(function() {
         self.adjustPopupHeight();
     }, 100);
@@ -1260,12 +1322,6 @@ OfflineLicenseSystem.prototype.showLicenseDetailsPopup = function() {
     document.body.appendChild(overlay);
     
     var self = this;
-    
-    overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) {
-            self.removePopup(overlay);
-        }
-    });
     
     document.getElementById('closePopupBtn').addEventListener('click', function() {
         self.removePopup(overlay);
@@ -1395,13 +1451,6 @@ OfflineLicenseSystem.prototype.showUpgradeOptions = function() {
             self.processUpgrade(targetPackage, overlay);
         });
     }
-    
-    // Klik di luar untuk close
-    overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) {
-            self.removePopup(overlay);
-        }
-    });
     
     // Adjust height setelah render
     setTimeout(function() {
@@ -1712,6 +1761,26 @@ OfflineLicenseSystem.prototype.setupActivationEvents = function(overlay) {
     var activateBtn = overlay.querySelector('#activateOfflineBtn');
     var licenseInput = overlay.querySelector('#offlineLicenseKey');
     
+    if (!activateBtn || !licenseInput) {
+        console.error('Element not found for activation events');
+        return;
+    }
+    
+    // Event untuk fokus pada input
+    licenseInput.addEventListener('focus', function() {
+        self.toggleFocusedInputMode(true, overlay);
+    });
+    
+    // Event untuk klik di dalam input group (jika user klik area sekitar input)
+    var inputGroup = overlay.querySelector('.input-group');
+    if (inputGroup) {
+        inputGroup.addEventListener('click', function(e) {
+            if (e.target !== licenseInput && !licenseInput.matches(':focus')) {
+                licenseInput.focus();
+            }
+        });
+    }
+    
     activateBtn.addEventListener('click', function() {
         self.processActivation(overlay, activateBtn, licenseInput);
     });
@@ -1722,23 +1791,36 @@ OfflineLicenseSystem.prototype.setupActivationEvents = function(overlay) {
         }
     });
     
-    overlay.querySelector('#demoModeBtn').addEventListener('click', function() {
-        self.activateDemoMode();
-        self.removePopup(overlay);
-    });
+    // CEK ELEMEN SEBELUM MENAMBAHKAN EVENT LISTENER
+    var demoModeBtn = overlay.querySelector('#demoModeBtn');
+    if (demoModeBtn) {
+        demoModeBtn.addEventListener('click', function() {
+            self.activateDemoMode();
+            self.removePopup(overlay);
+        });
+    }
     
-    overlay.querySelector('#contactAdminBtn').addEventListener('click', function() {
-        window.open('https://wa.me/6289609745090?text=Halo%20Admin,%20saya%20ingin%20membeli%20lisensi%20Adzan%20App.%20ID%20Perangkat:%20' + encodeURIComponent(self.deviceId), '_blank');
-    });
+    var contactAdminBtn = overlay.querySelector('#contactAdminBtn');
+    if (contactAdminBtn) {
+        contactAdminBtn.addEventListener('click', function() {
+            window.open('https://wa.me/6289609745090?text=Halo%20Admin,%20saya%20ingin%20membeli%20lisensi%20Adzan%20App.%20ID%20Perangkat:%20' + encodeURIComponent(self.deviceId), '_blank');
+        });
+    }
     
     // Event listener untuk panel admin
-    overlay.querySelector('#enterAdminPanelBtn').addEventListener('click', function() {
-        var password = prompt('Masukkan password admin:');
-        if (password) {
-            self.showAdminPanel(password);
-        }
-    });
+    var enterAdminPanelBtn = overlay.querySelector('#enterAdminPanelBtn');
+    if (enterAdminPanelBtn) {
+        enterAdminPanelBtn.addEventListener('click', function() {
+            var password = prompt('Masukkan password admin:');
+            if (password) {
+                self.showAdminPanel(password);
+            }
+        });
+    }
+
     
+    // Setup package preview
+    this.setupPackagePreview();
 };
 
 OfflineLicenseSystem.prototype.processActivation = function(overlay, activateBtn, licenseInput) {
@@ -1782,67 +1864,219 @@ OfflineLicenseSystem.prototype.processActivation = function(overlay, activateBtn
 OfflineLicenseSystem.prototype.setupPackagePreview = function() {
     var self = this;
     var licenseInput = document.getElementById('offlineLicenseKey');
-    var packagePreview = document.getElementById('packagePreview');
     
-    if (!licenseInput || !packagePreview) return;
+    if (!licenseInput) return;
     
     licenseInput.addEventListener('input', function(e) {
         var key = e.target.value.toUpperCase().trim();
-        
-        if (!key) {
-            packagePreview.innerHTML = [
-                '<div class="preview-placeholder">',
-                '    <i class="bi bi-box"></i>',
-                '    <p>Paket akan terdeteksi otomatis</p>',
-                '</div>'
-            ].join('');
-            return;
-        }
-        
-        var licenseInfo = self.validLicenseKeys[key];
-        
-        if (licenseInfo) {
-            var packageData = self.licensePackages[licenseInfo.package];
-            
-            packagePreview.innerHTML = [
-                '<div class="package-detected ' + licenseInfo.package + '">',
-                '    <div class="package-icon">',
-                '        <i class="bi bi-shield-check"></i>',
-                '    </div>',
-                '    <div class="package-info">',
-                '        <h4>' + packageData.name + '</h4>',
-                '        <p>' + licenseInfo.expiryDays + ' hari aktif</p>',
-                '        <div class="package-features">',
-                '            <span><i class="bi bi-images"></i> ' + packageData.features.maxImages + ' gambar</span>',
-                '            <span><i class="bi ' + (packageData.features.hiddenAudio.length === 0 ? 'bi-check-lg' : 'bi-x-lg') + '"></i> Audio</span>',
-                '            <span><i class="bi ' + (packageData.features.ads.enabled ? 'bi-x-lg' : 'bi-check-lg') + '"></i> Iklan</span>',
-                '        </div>',
-                '    </div>',
-                '</div>'
-            ].join('');
-        } else {
-            if (self.isValidLicenseFormat(key)) {
-                packagePreview.innerHTML = [
-                    '<div class="package-invalid">',
-                    '    <div class="package-icon">',
-                    '        <i class="bi bi-exclamation-circle"></i>',
-                    '    </div>',
-                    '    <div class="package-info">',
-                    '        <h4>Kode Tidak Dikenali</h4>',
-                    '        <p>Kode lisensi tidak ditemukan dalam database</p>',
-                    '    </div>',
-                '</div>'
-                ].join('');
-            }
-        }
+        self.updatePackagePreview(key);
     });
 };
 
-// TAMBAHKAN DI CONSTRUCTOR (jika belum ada):
-this.demoUsedKey = 'demo_used_' + this.deviceId;
+// ==================== FUNGSI BARU: TOGGLE FOCUSED INPUT MODE ====================
+// ==================== FUNGSI BARU: TOGGLE FOCUSED INPUT MODE ====================
+OfflineLicenseSystem.prototype.toggleFocusedInputMode = function(enable, overlay) {
+    var popup = overlay.querySelector('.offline-license-popup');
+    var licenseInput = overlay.querySelector('#offlineLicenseKey');
+    var inputGroup = overlay.querySelector('.input-group');
+    var packagePreview = overlay.querySelector('#packagePreview');
+    
+    if (!popup || !inputGroup) return;
+    
+    if (enable) {
+        // Masuk ke mode fokus
+        popup.classList.add('focused-input-mode');
+        
+        // Tampilkan preview jika ada konten
+        if (packagePreview && packagePreview.innerHTML.trim()) {
+            packagePreview.style.display = 'block';
+            packagePreview.style.visibility = 'visible';
+            packagePreview.style.opacity = '1';
+        }
+        
+        // Buat tombol close
+        var closeBtn = document.createElement('button');
+        closeBtn.className = 'close-focused-btn';
+        closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+        closeBtn.addEventListener('click', function() {
+            this.toggleFocusedInputMode(false, overlay);
+        }.bind(this));
+        
+        popup.appendChild(closeBtn);
+        
+        // Buat tombol validasi di dalam input
+        var validationIcons = document.createElement('div');
+        validationIcons.className = 'input-validation-icons';
+        
+        var validIcon = document.createElement('button');
+        validIcon.className = 'validation-icon valid disabled';
+        validIcon.innerHTML = '<i class="bi bi-check-lg"></i>';
+        validIcon.title = 'Kode valid - Klik untuk aktivasi';
+        validIcon.addEventListener('click', function() {
+            if (!validIcon.classList.contains('disabled')) {
+                this.processActivation(overlay, overlay.querySelector('#activateOfflineBtn'), licenseInput);
+            }
+        }.bind(this));
+        
+        var invalidIcon = document.createElement('button');
+        invalidIcon.className = 'validation-icon invalid disabled';
+        invalidIcon.innerHTML = '<i class="bi bi-x-lg"></i>';
+        invalidIcon.title = 'Kode tidak valid';
+        invalidIcon.addEventListener('click', function() {
+            this.showToast('Kode lisensi tidak valid', 'error');
+            licenseInput.focus();
+        }.bind(this));
+        
+        validationIcons.appendChild(validIcon);
+        validationIcons.appendChild(invalidIcon);
+        inputGroup.appendChild(validationIcons);
+        
+        // Setup real-time validation
+        this.setupRealTimeValidation(licenseInput, validIcon, invalidIcon);
+        
+        // Update preview berdasarkan nilai saat ini
+        if (licenseInput.value) {
+            licenseInput.dispatchEvent(new Event('input'));
+        }
+        
+        // Fokuskan input
+        setTimeout(function() {
+            licenseInput.focus();
+            licenseInput.select();
+        }, 300);
+        
+    } else {
+        // Keluar dari mode fokus
+        popup.classList.remove('focused-input-mode');
+        
+        // Hapus tombol close
+        var closeBtn = popup.querySelector('.close-focused-btn');
+        if (closeBtn) {
+            closeBtn.remove();
+        }
+        
+        // Hapus tombol validasi
+        var validationIcons = inputGroup.querySelector('.input-validation-icons');
+        if (validationIcons) {
+            validationIcons.remove();
+        }
+        
+        // Reset fokus
+        licenseInput.blur();
+    }
+};
+
+// ==================== FUNGSI BARU: SETUP REAL-TIME VALIDATION ====================
+OfflineLicenseSystem.prototype.setupRealTimeValidation = function(licenseInput, validIcon, invalidIcon) {
+    var self = this;
+    
+    licenseInput.addEventListener('input', function() {
+        var key = this.value.toUpperCase().trim();
+        
+        // Reset icons
+        validIcon.classList.add('disabled');
+        invalidIcon.classList.add('disabled');
+        
+        // Juga trigger update package preview (panggil fungsi yang sudah ada)
+        if (typeof self.updatePackagePreview === 'function') {
+            self.updatePackagePreview(key);
+        }
+        
+        if (!key) {
+            return;
+        }
+        
+        // Cek format
+        if (!self.isValidLicenseFormat(key)) {
+            invalidIcon.classList.remove('disabled');
+            invalidIcon.classList.add('active');
+            validIcon.classList.remove('active');
+            return;
+        }
+        
+        // Cek apakah kode valid
+        var licenseInfo = self.validLicenseKeys[key];
+        
+        if (licenseInfo) {
+            validIcon.classList.remove('disabled');
+            validIcon.classList.add('active');
+            invalidIcon.classList.remove('active');
+        } else {
+            invalidIcon.classList.remove('disabled');
+            invalidIcon.classList.add('active');
+            validIcon.classList.remove('active');
+        }
+    });
+    
+    // Juga cek saat ini
+    if (licenseInput.value) {
+        licenseInput.dispatchEvent(new Event('input'));
+    }
+};
+
+// ==================== FUNGSI BARU: UPDATE PACKAGE PREVIEW ====================
+OfflineLicenseSystem.prototype.updatePackagePreview = function(key) {
+    var packagePreview = document.getElementById('packagePreview');
+    if (!packagePreview) return;
+    
+    if (!key) {
+        packagePreview.innerHTML = [
+            '<div class="preview-placeholder">',
+            '    <i class="bi bi-box"></i>',
+            '    <p>Paket akan terdeteksi otomatis</p>',
+            '</div>'
+        ].join('');
+        return;
+    }
+    
+    var licenseInfo = this.validLicenseKeys[key];
+    
+    if (licenseInfo) {
+        var packageData = this.licensePackages[licenseInfo.package];
+        
+        packagePreview.innerHTML = [
+            '<div class="package-detected ' + licenseInfo.package + '">',
+            '    <div class="package-icon">',
+            '        <i class="bi bi-shield-check"></i>',
+            '    </div>',
+            '    <div class="package-info">',
+            '        <h4>' + packageData.name + '</h4>',
+            '        <p>' + licenseInfo.expiryDays + ' hari aktif</p>',
+            '        <div class="package-features">',
+            '            <span><i class="bi bi-images"></i> ' + packageData.features.maxImages + ' gambar</span>',
+            '            <span><i class="bi ' + (packageData.features.hiddenAudio.length === 0 ? 'bi-check-lg' : 'bi-x-lg') + '"></i> Audio</span>',
+            '            <span><i class="bi ' + (packageData.features.ads.enabled ? 'bi-x-lg' : 'bi-check-lg') + '"></i> Iklan</span>',
+            '        </div>',
+            '    </div>',
+            '</div>'
+        ].join('');
+    } else {
+        if (this.isValidLicenseFormat(key)) {
+            packagePreview.innerHTML = [
+                '<div class="package-invalid">',
+                '    <div class="package-icon">',
+                '        <i class="bi bi-exclamation-circle"></i>',
+                '    </div>',
+                '    <div class="package-info">',
+                '        <h4>Kode Tidak Dikenali</h4>',
+                '        <p>Kode lisensi tidak ditemukan dalam database</p>',
+                '    </div>',
+            '</div>'
+            ].join('');
+        } else {
+            packagePreview.innerHTML = [
+                '<div class="preview-placeholder">',
+                '    <i class="bi bi-key"></i>',
+                '    <p>Masukkan kode lisensi yang valid</p>',
+                '</div>'
+            ].join('');
+        }
+    }
+};
 
 // PASTIKAN FUNGSI INI ADA:
 OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
+    // Cek apakah sudah pernah menggunakan demo di perangkat ini
     var demoUsed = localStorage.getItem(this.demoUsedKey);
     
     if (demoUsed === 'true') {
@@ -1852,6 +2086,7 @@ OfflineLicenseSystem.prototype.checkDemoEligibility = function() {
         };
     }
     
+    // Cek apakah sudah memiliki lisensi aktif
     if (this.currentLicense && this.currentLicense.status !== 'demo') {
         return {
             eligible: false,
@@ -2154,14 +2389,6 @@ OfflineLicenseSystem.prototype.showDemoInfoPopup = function() {
     var timerInterval = setInterval(updateTimer, 1000);
     updateTimer(); // Panggil sekali untuk inisialisasi
     
-    // Event listener
-    overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) {
-            // Tidak bisa tutup dengan klik di luar
-            self.showToast('Gunakan tombol "LANJUTKAN DEMO" untuk melanjutkan', 'info');
-        }
-    });
-    
     document.getElementById('activateNowBtn').addEventListener('click', function() {
         clearInterval(timerInterval);
         self.removePopup(overlay);
@@ -2329,6 +2556,81 @@ OfflineLicenseSystem.prototype.showToast = function(message, type) {
             selfToast.parentNode.removeChild(selfToast);
         }
     }, 4000);
+};
+
+// ==================== FUNGSI BARU: GENERATE KODE LISENSI (untuk admin) ====================
+OfflineLicenseSystem.prototype.generateLicenseCode = function(packageType, deviceId, customerName) {
+    // Generate random code 6 karakter
+    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    var result = '';
+    for (var i = 0; i < 6; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    
+    var licenseCode = 'RH-MTV-' + result;
+    
+    // Tentukan expiry days berdasarkan paket
+    var expiryDays = 365;
+    if (packageType === 'vip') {
+        expiryDays = 9999;
+    } else if (packageType === 'trial') {
+        expiryDays = 2;
+    }
+    
+    // Tambahkan ke validLicenseKeys agar bisa langsung digunakan
+    this.validLicenseKeys[licenseCode] = {
+        package: packageType,
+        expiryDays: expiryDays,
+        created: new Date().toISOString().split('T')[0]
+    };
+    
+    // Simpan data lisensi yang digenerate
+    var licenseData = {
+        code: licenseCode,
+        package: packageType,
+        expiryDays: expiryDays,
+        created: new Date().toISOString().split('T')[0],
+        deviceId: deviceId || 'N/A',
+        customerName: customerName || 'Anonymous',
+        generatedAt: new Date().toISOString(),
+        status: 'pending' // pending, active, used
+    };
+    
+    // Simpan ke localStorage (untuk simulasi, dalam real implementation ini dikirim ke server)
+    var generatedLicenses = JSON.parse(localStorage.getItem('generated_licenses') || '[]');
+    generatedLicenses.push(licenseData);
+    localStorage.setItem('generated_licenses', JSON.stringify(generatedLicenses));
+    
+    // Juga simpan validLicenseKeys yang diperbarui ke localStorage untuk persistensi
+    this.saveValidLicenseKeys();
+    
+    return licenseCode;
+};
+
+// ==================== FUNGSI BARU: SIMPAN VALID LICENSE KEYS ====================
+OfflineLicenseSystem.prototype.saveValidLicenseKeys = function() {
+    try {
+        localStorage.setItem('valid_license_keys', JSON.stringify(this.validLicenseKeys));
+        return true;
+    } catch (error) {
+        console.error('Error saving valid license keys:', error);
+        return false;
+    }
+};
+
+// ==================== FUNGSI BARU: LOAD VALID LICENSE KEYS ====================
+OfflineLicenseSystem.prototype.loadValidLicenseKeys = function() {
+    try {
+        var saved = localStorage.getItem('valid_license_keys');
+        if (saved) {
+            var loadedKeys = JSON.parse(saved);
+            // Gabungkan dengan default keys (jika ada key yang sama, gunakan yang dari localStorage)
+            Object.assign(this.validLicenseKeys, loadedKeys);
+            console.log('Loaded valid license keys from storage:', Object.keys(loadedKeys).length, 'keys');
+        }
+    } catch (error) {
+        console.error('Error loading valid license keys:', error);
+    }
 };
 
 // ==================== STYLING (DIPERBAIKI) ====================
@@ -3408,6 +3710,25 @@ OfflineLicenseSystem.prototype.addStyles = function() {
                 flex-direction: column;
             }
         }
+
+        .important-note {
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            color: #856404 !important;
+            font-size: 14px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .important-note i {
+            color: #ffc107;
+            font-size: 16px;
+            margin-top: 2px;
+        }
         
         /* ==================== UPGRADE OPTIONS ==================== */
         .upgrade-container {
@@ -4225,6 +4546,148 @@ OfflineLicenseSystem.prototype.addStyles = function() {
             min-width: 60px;
             display: inline-block;
             text-align: center;
+        }
+
+        /* ==================== FOCUSED INPUT MODE ==================== */
+        /* ==================== FOCUSED INPUT MODE ==================== */
+        .focused-input-mode {
+            max-width: 500px !important;
+            min-height: auto !important;
+        }
+
+        .focused-input-mode .popup-header,
+        .focused-input-mode .popup-body .action-section,
+        .focused-input-mode .popup-body .info-section,
+        .focused-input-mode .popup-footer .contact-details {
+            display: none !important;
+        }
+
+        /* TAMBAHKAN INI: Jangan sembunyikan package preview */
+        .focused-input-mode .package-preview {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            margin-top: 20px !important;
+            animation: slideUp 0.3s ease !important;
+        }
+
+        .focused-input-mode .popup-body {
+            padding: 30px !important;
+            max-height: none !important;
+            overflow: visible !important;
+        }
+
+        .focused-input-mode .activation-card {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+
+        .focused-input-mode .license-input-section {
+            margin-bottom: 0 !important;
+        }
+
+        .focused-input-mode .input-group {
+            position: relative;
+            margin-bottom: 15px !important;
+        }
+
+        .focused-input-mode .license-input {
+            font-size: 24px !important;
+            padding: 20px 60px 20px 20px !important;
+            border-radius: 12px !important;
+            border-width: 3px !important;
+            letter-spacing: 2px !important;
+        }
+
+        .focused-input-mode .input-hint {
+            font-size: 14px !important;
+            margin-top: 10px !important;
+            text-align: center !important;
+        }
+
+        .focused-input-mode .package-preview {
+            min-height: 80px !important;
+            margin-top: 20px !important;
+            background: rgba(255, 255, 255, 0.95) !important;
+            border: 2px solid rgba(0, 90, 49, 0.2) !important;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Tombol close di pojok kanan atas */
+        .close-focused-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.1) !important;
+            border: none;
+            color: #333 !important;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .close-focused-btn:hover {
+            background: rgba(0, 90, 49, 0.2) !important;
+            transform: rotate(90deg);
+        }
+
+        /* Tombol status validasi di dalam input */
+        .input-validation-icons {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        .validation-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s;
+            opacity: 0.7;
+        }
+
+        .validation-icon:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        .validation-icon.valid {
+            background: rgba(40, 167, 69, 0.2) !important;
+            color: #28a745 !important;
+            border: 2px solid rgba(40, 167, 69, 0.3);
+        }
+
+        .validation-icon.invalid {
+            background: rgba(220, 53, 69, 0.2) !important;
+            color: #dc3545 !important;
+            border: 2px solid rgba(220, 53, 69, 0.3);
+        }
+
+        .validation-icon.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .validation-icon.active {
+            opacity: 1;
+            box-shadow: 0 0 0 4px rgba(0, 90, 49, 0.1);
         }
 
 
